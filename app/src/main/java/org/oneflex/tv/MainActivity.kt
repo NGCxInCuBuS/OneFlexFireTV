@@ -2,6 +2,10 @@ package org.oneflex.tv
 
 import android.app.Activity
 import android.graphics.Color
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
+import android.view.MotionEvent
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.net.Uri
@@ -18,6 +22,10 @@ class MainActivity : Activity() {
     private lateinit var root: FrameLayout
     private lateinit var web: WebView
     private var fullscreen: View? = null
+    private lateinit var cursor: View
+    private var cursorX = 0f
+    private var cursorY = 0f
+    private val cursorStep get() = 32f * resources.displayMetrics.density
     private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,12 +68,45 @@ class MainActivity : Activity() {
                     if (view == null) return
                     fullscreen = view; fullscreenCallback = callback
                     web.visibility = View.GONE
+                    cursor.visibility = View.GONE
                     root.addView(view, FrameLayout.LayoutParams(-1,-1))
                 }
                 override fun onHideCustomView() { closeFullscreen() }
             }
         }
         root.addView(web, FrameLayout.LayoutParams(-1,-1))
+        cursor = object : View(this) {
+            private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.WHITE
+                style = Paint.Style.FILL
+                setShadowLayer(3f, 1f, 2f, Color.BLACK)
+            }
+            private val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.BLACK
+                style = Paint.Style.STROKE
+                strokeWidth = 2f * resources.displayMetrics.density
+            }
+            override fun onDraw(canvas: Canvas) {
+                val d = resources.displayMetrics.density
+                val p = Path().apply {
+                    moveTo(cursorX, cursorY)
+                    lineTo(cursorX + 5f*d, cursorY + 21f*d)
+                    lineTo(cursorX + 10f*d, cursorY + 13f*d)
+                    lineTo(cursorX + 19f*d, cursorY + 13f*d)
+                    close()
+                }
+                canvas.drawPath(p, paint)
+                canvas.drawPath(p, border)
+            }
+        }
+        cursor.isClickable = false
+        cursor.isFocusable = false
+        root.addView(cursor, FrameLayout.LayoutParams(-1,-1))
+        root.post {
+            cursorX = root.width / 2f
+            cursorY = root.height / 2f
+            cursor.invalidate()
+        }
         setContentView(root)
         web.loadUrl("https://1flex.org/")
     }
@@ -108,14 +149,34 @@ class MainActivity : Activity() {
             KeyEvent.KEYCODE_DPAD_RIGHT -> "right"
             else -> null
         }
-        if(dir!=null){web.evaluateJavascript("window.__tvMove&&window.__tvMove('$dir')",null);return true}
-        if(keyCode==KeyEvent.KEYCODE_DPAD_CENTER){web.evaluateJavascript("window.__tvSelect&&window.__tvSelect()",null);return true}
+        if(dir!=null){
+            val oldX=cursorX
+            val oldY=cursorY
+            when(dir){
+                "up" -> cursorY=(cursorY-cursorStep).coerceAtLeast(0f)
+                "down" -> cursorY=(cursorY+cursorStep).coerceAtMost((web.height-1).coerceAtLeast(0).toFloat())
+                "left" -> cursorX=(cursorX-cursorStep).coerceAtLeast(0f)
+                "right" -> cursorX=(cursorX+cursorStep).coerceAtMost((web.width-1).coerceAtLeast(0).toFloat())
+            }
+            cursor.invalidate()
+            if(oldX==cursorX && oldY==cursorY && (dir=="up" || dir=="down")){
+                web.scrollBy(0, if(dir=="down") 250 else -250)
+            }
+            return true
+        }
+        if(keyCode==KeyEvent.KEYCODE_DPAD_CENTER || keyCode==KeyEvent.KEYCODE_ENTER){
+            val t=android.os.SystemClock.uptimeMillis()
+            web.dispatchTouchEvent(MotionEvent.obtain(t,t,MotionEvent.ACTION_DOWN,cursorX,cursorY,0))
+            web.dispatchTouchEvent(MotionEvent.obtain(t,t+60,MotionEvent.ACTION_UP,cursorX,cursorY,0))
+            return true
+        }
         return super.onKeyDown(keyCode,event)
     }
     private fun closeFullscreen() {
         fullscreen?.let { root.removeView(it) };fullscreen=null
         fullscreenCallback?.onCustomViewHidden();fullscreenCallback=null
         web.visibility=View.VISIBLE
+        cursor.visibility=View.VISIBLE
     }
     @Deprecated("Android back navigation")
     override fun onBackPressed() {
