@@ -3,6 +3,9 @@ package org.oneflex.tv
 import android.app.Activity
 import android.graphics.Color
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.net.Uri
+import java.io.ByteArrayInputStream
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
@@ -24,11 +27,22 @@ class MainActivity : Activity() {
             settings.javaScriptEnabled = true
             settings.setSupportMultipleWindows(true)
             settings.javaScriptCanOpenWindowsAutomatically = false
+            settings.allowFileAccess = false
+            settings.allowContentAccess = false
             settings.domStorageEnabled = true
             settings.mediaPlaybackRequiresUserGesture = false
             settings.useWideViewPort = true
             settings.loadWithOverviewMode = true
             webViewClient = object : WebViewClient() {
+                override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest): WebResourceResponse? {
+                    val host = request.url.host?.lowercase() ?: return super.shouldInterceptRequest(view, request)
+                    val blocked = listOf("doubleclick.net", "googlesyndication.com", "googleadservices.com", "popads.net", "popcash.net", "propellerads.com", "adsterra.com", "onclicka.com", "exoclick.com")
+                    if (blocked.any { host == it || host.endsWith("."+it) }) {
+                        return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream(ByteArray(0)))
+                    }
+                    return super.shouldInterceptRequest(view, request)
+                }
+
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest): Boolean {
                     if (!request.isForMainFrame) return false
                     val uri = request.url
@@ -61,8 +75,18 @@ class MainActivity : Activity() {
           if(window.__tvInstalled)return;
           window.__tvInstalled=true;
           var style=document.createElement('style');
-          style.textContent='.__tvfocus{outline:3px solid #5ad2ff!important;outline-offset:3px!important;}';
+          style.textContent='.__tvfocus{outline:3px solid #5ad2ff!important;outline-offset:3px!important;} iframe[src*="doubleclick.net"],iframe[src*="googlesyndication.com"],iframe[src*="adsterra.com"],iframe[src*="exoclick.com"],[id^="google_ads_"],ins.adsbygoogle{display:none!important;}';
           document.head.appendChild(style);
+          document.addEventListener('click',function(ev){
+            var el=ev.target&&ev.target.closest&&ev.target.closest('a[href]');
+            if(!el)return;
+            try {
+              var dest=new URL(el.href,location.href);
+              if(!['http:','https:'].includes(dest.protocol)||!(dest.hostname==='1flex.org'||dest.hostname.endsWith('.1flex.org'))){
+                ev.preventDefault();ev.stopImmediatePropagation();
+              }
+            }catch(e){ev.preventDefault();ev.stopImmediatePropagation();}
+          },true);
           window.__tvCurrent=null;
           window.__tvItems=function(){return Array.from(document.querySelectorAll('a,button,input,select,[role="button"],[tabindex]')).filter(function(e){var r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';});};
           window.__tvMove=function(dir){
