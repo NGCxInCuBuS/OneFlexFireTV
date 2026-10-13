@@ -2,6 +2,7 @@ package org.oneflex.tv
 
 import android.app.Activity
 import android.graphics.Color
+import android.webkit.WebResourceRequest
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
@@ -21,14 +22,26 @@ class MainActivity : Activity() {
         root = FrameLayout(this).apply { setBackgroundColor(Color.rgb(16,24,43)) }
         web = WebView(this).apply {
             settings.javaScriptEnabled = true
+            settings.setSupportMultipleWindows(true)
+            settings.javaScriptCanOpenWindowsAutomatically = false
             settings.domStorageEnabled = true
             settings.mediaPlaybackRequiresUserGesture = false
             settings.useWideViewPort = true
             settings.loadWithOverviewMode = true
             webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest): Boolean {
+                    if (!request.isForMainFrame) return false
+                    val uri = request.url
+                    val host = uri.host?.lowercase() ?: return true
+                    if (uri.scheme != "https" && uri.scheme != "http") return true
+                    return host != "1flex.org" && !host.endsWith(".1flex.org")
+                }
+
                 override fun onPageFinished(view: WebView?, url: String?) { injectNavigation() }
             }
             webChromeClient = object : WebChromeClient() {
+                override fun onCreateWindow(view: WebView?, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message?): Boolean = false
+
                 override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
                     if (view == null) return
                     fullscreen = view; fullscreenCallback = callback
